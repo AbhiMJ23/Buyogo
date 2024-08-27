@@ -1,0 +1,116 @@
+#Flask-Deployment Yaml File
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-deployment
+  namespace: flask
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask
+  template:
+    metadata:
+      labels:
+        app: flask
+    spec:
+      containers:
+      - name: flask
+        image: abhimj23/flask:6
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MONGO_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-username
+        - name: MONGO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: mongo-root-password
+        - name: MONGO_URI
+          valueFrom:
+            configMapKeyRef:
+              name: mongodb-config
+              key: MONGO_URI 
+        - name: MONGO_INITDB_DATABASE
+          value: "flask_db"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "500Mi"
+          limits:
+            cpu: "500m"
+            memory: "500Mi"
+      imagePullSecrets:
+      - name: dockerhub-cred  # Moved imagePullSecrets under the Pod spec
+
+#Flask-Service YAML File
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-service
+  namespace: flask
+spec:
+  selector:
+    app: flask
+  type: NodePort
+  ports:
+  - port: 5000         # The port the service exposes
+    targetPort: 5000    # The port your container listens on
+    nodePort: 31211     # Custom node port (optional)
+
+#Flask-HPA YAML File
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: flask-hpa
+  namespace: flask
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: flask-deployment
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+
+#MongoDB credentials for the Flask App in Flask-Namespace in the form of secrets
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mongodb-secret
+  namespace: flask
+type: Opaque
+data:
+  mongodb-root-username: YWRtaW4=
+  mongodb-root-password: YWRtaW5AMTIz
+
+#Flask Configmap for DB URL
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-config
+  namespace: flask
+data:
+  MONGODB_URI: "mongod://mongodb.mongodb.svc.cluster.local/?replicaSet=rs0" 
+
+
+---
+
+Also created the Docker Registry Secret For pulling the images from the Private Dockerhub registry.
+
